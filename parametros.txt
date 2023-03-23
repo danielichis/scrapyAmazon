@@ -1,0 +1,3 @@
+21
+C:\Users\Daniel\AppData\Local\Google\Chrome\User Data
+C:\Program Files\Google\Chrome\Application\chrome.exe
