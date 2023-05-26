@@ -5,6 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 import time
 import json
+from webdriver_manager.chrome import ChromeDriverManager
 import re
 import locale
 import pandas as pd
@@ -39,7 +40,8 @@ option.add_argument('--kiosk-printing')
 option.binary_location=lines[2]
 option.add_experimental_option('prefs', prefs)
 option.add_argument(f"user-data-dir={pdfs_path}")
-w = webdriver.Chrome(executable_path=w, options=option)
+w= webdriver.Chrome(ChromeDriverManager().install(), options=option)
+#w = webdriver.Chrome(executable_path=w, options=option)
 wait = WebDriverWait(w, 30)
 def pdfs_links():
     impr_button=w.find_element(By.XPATH,"//a[contains(., 'Ver o Imprimir Recibo')]")
@@ -152,18 +154,17 @@ w.get(homeUrl)
 cuentas=[cuenta.text for cuenta in wait.until(EC.visibility_of_all_elements_located((By.XPATH,"//div[contains(text(), '.com')]")))]
 print(cuentas)
 orders_total_details=[]
-
+time.sleep(200)
 for cuenta in cuentas:
-    try:
+    #try:
         account=wait.until(EC.visibility_of_element_located((By.XPATH,f"//div[contains(text(),'{cuenta}')]")))
-        
         account.click()
         print(f"leyendo cuenta :{cuenta}")
         time.sleep(4)
         w.get(homeUrl)
-    except Exception as e:
-        print(e)
-        print(f"ERROR NO DEFINIDO EN CUENTA: {cuenta}")
+    # except Exception as e:
+    #     print(e)
+    #     print(f"ERROR NO DEFINIDO EN CUENTA: {cuenta}")
         #w.get("https://www.amazon.com/-/es/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F-%2Fes%2Fgp%2Fcss%2Forder-history%3Fref_%3Dnav_youraccount_switchacct&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&switch_account=picker&ignoreAuthState=1&_encoding=UTF8")
 w.close()
 df=pd.DataFrame(orders_total_details,columns=["Fecha de compra","Factura de amazon","link de factura","awb","Traking","Monto de Taxes","whe","Terminacion de tarjeta","Fecha de envio","Fecha de devolucion","Cuenta","Courier"])

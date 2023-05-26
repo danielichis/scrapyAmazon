@@ -1,3 +1,4 @@
-21
-C:\Users\Daniel\AppData\Local\Google\Chrome\User Data
+01/02/2023-28/02/2023
+C:\Users\Daniel\AppData\Local\Google\Chrome\User Data2
 C:\Program Files\Google\Chrome\Application\chrome.exe
+2

@@ -16,9 +16,9 @@ from sys import platform
 download_path=f"{os.getcwd()}/descargas_pdf"
 with open("parametros.txt", mode="r") as f:
     lines=f.readlines()
-d=lines[0]
-pdfs_path=lines[1]
-exepath=lines[2]
+dates=lines[0].strip()
+pdfs_path=lines[1].strip()
+exepath=lines[2].strip()
 
 if platform == "linux" or platform == "linux2":
     pass
@@ -49,7 +49,7 @@ option.binary_location=exepath
 option.add_experimental_option('prefs', prefs)
 option.add_argument(f"user-data-dir={pdfs_path}")
 w = webdriver.Chrome(executable_path=w, options=option)
-wait = WebDriverWait(w, 30)
+wait = WebDriverWait(w, 3)
 def pdfs_links():
     impr_button=w.find_element(By.XPATH,"//a[contains(., 'Ver o Imprimir Recibo')]")
     pdf_link=impr_button.get_attribute("href")
@@ -84,6 +84,8 @@ def addresess():
             address="Alexim"
         elif len(re.findall(r"2868 NW 72ND AVE",address,flags=re.I))>0:
             address="JMC"
+        elif len(re.findall(r"1350 NW 121ST AVE",address,flags=re.I))>0:
+            address="MSL"
         else:
             address="otros"
     except:
@@ -100,27 +102,38 @@ def targets_digits():
 def productsList():
     productsList=[x.text for x in w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a")]
     return productsList
-def scrap_order_details(cuenta,d):
+def scrap_order_details(cuenta,dates):
+    dateFrom=datetime.strptime(dates.split("-")[0],"%d/%m/%Y").date()
+    dateTo=datetime.strptime(dates.split("-")[1],"%d/%m/%Y").date()
+    print(dateFrom,dateTo)
     orders_details=[]
     print("PAGINA CARGADA")
     butoon_ped=wait.until(EC.visibility_of_element_located((By.XPATH,"//*[@id='nav-orders']/span[2]")))
     butoon_ped.click()
-    
+    with open("parametros.txt","r") as f:
+        lines=f.readlines()
+    if int(lines[3])>0:
+        w.find_element(By.XPATH,"//span[contains(text(),'Últimos 3 meses')]").click()
+        w.find_element(By.XPATH,f"//a[@id='time-filter_{int(lines[3])}']").click()
+        w.implicitly_wait(4)
     locale.setlocale(locale.LC_ALL, ("es_ES", "UTF-8"))
     #headers=w.find_elements(By.XPATH,"//div[@class='a-box a-color-offset-background order-header']//div[@class='a-fixed-right-grid-inner']")
     pages=[page.get_attribute("href") for page in w.find_elements(By.XPATH,"//li[@class='a-normal' or @class='a-selected' ]/a")]
-    from_date=date.today()+timedelta(days=-int(d))
+    #from_date=date.today()+timedelta(days=-int(d))
+    z=1
     fin=False
-    if len(pages)>0:
-        n=len(pages)
-    else:
-        n=1
-    print(f"numero de paginas : {len(pages)}" )
-    for i in range(n):
-        #page=w.find_elements(By.XPATH,"//li[@class='a-normal' or @class='a-selected' ]/a")[i].get_attribute("href")
-        if n!=1:
-            w.get(pages[i])
-        print(f"En la pagina {i+1}")
+    while len(w.find_elements(By.XPATH,"//li[@class='a-disabled a-last']"))==0:
+        print(f"En la pagina {z}")
+        z+=1
+        # if len(pages)>0:
+        #     n=len(pages)
+        # else:
+        #     n=1
+        #         #page=w.find_elements(By.XPATH,"//li[@class='a-normal' or @class='a-selected' ]/a")[i].get_attribute("href")
+        # for i in range(n):
+        #     if n!=1:
+        #         w.get(pages[i])
+        #     print(f"En la pagina {i+1}")
         espera=wait.until(EC.visibility_of_element_located((By.XPATH,"//a[contains(text(),'Ver detalles del pedido')]|//a[contains(text(),'View order details')]")))
         orders_elements=w.find_elements(By.XPATH,"//a[contains(text(),'Ver detalles del pedido')]|//a[contains(text(),'View order details')]")
         orders=[order.get_attribute("href") for order in orders_elements]
@@ -128,12 +141,14 @@ def scrap_order_details(cuenta,d):
         fechas=[fecha.text for fecha in fechas_elements]
         #pedidos=w.find_elements(By.XPATH,"//div[@class='a-text-right a-fixed-right-grid-col a-col-right']/div[@class='a-row']/a[1]")
         for j in range(len(fechas)):
+            scraped=False
             try: 
                 date_orederd=datetime.strptime(fechas[j], '%B %d, %Y').date()
             except:
                 date_orederd=datetime.strptime(fechas[j], '%d de %B de %Y').date()
             #if j<=5:
-            if from_date<=date_orederd:
+            print(f"-----------Pedido con fecha {date_orederd}")
+            if dateFrom<=date_orederd and date_orederd<=dateTo:
                 print(f"SE EXTRAE CON FECHA {date_orederd}")
                 w.get(orders[j])
                 target_digits=targets_digits()
@@ -151,16 +166,27 @@ def scrap_order_details(cuenta,d):
                 whe=""
                 date_send=""
                 date_refund=""
+                scraped=True
                 for pl in prlist:
                     orders_details.append([date_orderd,num_order,pdf_link,awb,traking_id,tax,whe,target_digits,date_send,date_refund,cuenta,address,pl])
             else:
-                fin=True
-                #print(f"POR TERMINAR CON FECHA {date_orederd}")
-                break
+                if dateFrom>date_orederd:
+                    fin=True
+                    #print(f"POR TERMINAR CON FECHA {date_orederd}")
+                    break
         if fin:
             break
-    #print(orders_details)
+        if scraped:
+            previusUrl=f"https://www.amazon.com/-/es/gp/your-account/order-history/ref=ppx_yo_dt_b_pagination_{z-2}_{z-1}?ie=UTF8&orderFilter=year-2023&search=&startIndex={(z-2)*10}"
+            w.get(previusUrl)
+        w.find_element(By.XPATH,"//a[text()='Siguiente']").click()
+        
     return orders_details
+
+    
+    
+    #print(orders_details)
+    
 
 w.get("https://www.amazon.com/-/es/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F-%2Fes%2Fgp%2Fcss%2Forder-history%3Fref_%3Dnav_youraccount_switchacct&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&switch_account=picker&ignoreAuthState=1&_encoding=UTF8")
 cuentas=[cuenta.text for cuenta in wait.until(EC.visibility_of_all_elements_located((By.XPATH,"//div[contains(text(), '.com')]")))]
@@ -173,7 +199,7 @@ for cuenta in cuentas:
         time.sleep(2)
         account.click()
         print(f"leyendo cuenta :{cuenta}")
-        orderf=scrap_order_details(cuenta,d)
+        orderf=scrap_order_details(cuenta,dates)
         if orderf!=[]:
             orders_total_details.extend(orderf)
         w.get("https://www.amazon.com/-/es/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.com%2F-%2Fes%2Fgp%2Fcss%2Forder-history%3Fref_%3Dnav_youraccount_switchacct&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=usflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&switch_account=picker&ignoreAuthState=1&_encoding=UTF8")
