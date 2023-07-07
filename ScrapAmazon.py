@@ -1,6 +1,7 @@
 from logging import exception
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
 import time
 import json
@@ -12,43 +13,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import os
 from sys import platform
-
+from utils.setWebdriver import configWebDriver
 download_path=f"{os.getcwd()}/descargas_pdf"
 with open("parametros.txt", mode="r") as f:
     lines=f.readlines()
 dates=lines[0].strip()
-pdfs_path=lines[1].strip()
-exepath=lines[2].strip()
-
-if platform == "linux" or platform == "linux2":
-    pass
-elif platform == "darwin":
-    print("Mac")
-    w='chromedriver'
-elif platform == "win32":
-    w='chromedriver.exe'
-options = webdriver.ChromeOptions()
-op=Options()
-settings = {
-    "recentDestinations": [{
-        "id": "Save as PDF",
-        "origin": "local",
-        "account": ""
-    }],
-    "selectedDestinationId": "Save as PDF",
-    "version": 2,
-}
-prefs = {
-    'printing.print_preview_sticky_settings.appState': json.dumps(settings),
-    'savefile.default_directory':download_path
-}
-option = Options()
-option.add_argument('--kiosk-printing')
-#option.binary_location='/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta'
-option.binary_location=exepath
-option.add_experimental_option('prefs', prefs)
-option.add_argument(f"user-data-dir={pdfs_path}")
-w = webdriver.Chrome(executable_path=w, options=option)
+w=configWebDriver()
 wait = WebDriverWait(w, 3)
 def pdfs_links():
     impr_button=w.find_element(By.XPATH,"//a[contains(., 'Ver o Imprimir Recibo')]")
@@ -59,10 +29,26 @@ def traking_ids():
         button_tracking=w.find_element(By.XPATH,"//a[contains(., 'Rastrear paquete')]")
         w.get(button_tracking.get_attribute("href"))
         traking_id=wait.until(EC.visibility_of_element_located((By.XPATH,"//div[contains(text(), 'ID de rastreo:')]"))).text
-        traking_id=re.findall(r"T?B?A?\d{12,}",traking_id)[0]
+        if len(traking_id)<20:
+            traking_id="Sin Tranking"
+        traking_id=re.findall(r"ID de rastreo:(.*)",traking_id)[0]  
     except:
         traking_id="Sin Tranking"
     return "'"+str(traking_id)
+def shipment_Date(year):
+    try:
+        #wait for element
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR,"a[data-ref='ppx_pt2_dt_b_pt_detail']")))
+        w.find_element(By.CSS_SELECTOR,"a[data-ref='ppx_pt2_dt_b_pt_detail']").click()
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR,"span[class='tracking-event-date']")))
+        shipmentDate=w.find_element(By.CSS_SELECTOR,"span[class='tracking-event-date']").text
+        shipmentDate=f"{shipmentDate} de {year}"
+        shipmentDate=datetime.strptime(shipmentDate, '%A,%d de %B de %Y').date() 
+    except Exception as e:
+        print(e)
+        shipmentDate="-"
+
+    return shipmentDate
 def taxes():
     tax =w.find_element(By.XPATH,'//div[contains(., "Impuestos")]/following-sibling::div/span').text
     tax=re.findall(r"\d+\.\d+",tax)[0]
@@ -138,7 +124,7 @@ def scrap_order_details(cuenta,dates):
         orders_elements=w.find_elements(By.XPATH,"//a[contains(text(),'Ver detalles del pedido')]|//a[contains(text(),'View order details')]")
         orders=[order.get_attribute("href") for order in orders_elements]
         fechas_elements=w.find_elements(By.XPATH,"//div[contains(., 'Pedido realizado')]/following-sibling::div/span")
-        fechas=[fecha.text for fecha in fechas_elements]
+        fechas=[fecha.text for fecha in fechas_elements if len(fecha.text)>0]
         #pedidos=w.find_elements(By.XPATH,"//div[@class='a-text-right a-fixed-right-grid-col a-col-right']/div[@class='a-row']/a[1]")
         for j in range(len(fechas)):
             scraped=False
@@ -153,18 +139,19 @@ def scrap_order_details(cuenta,dates):
                 w.get(orders[j])
                 target_digits=targets_digits()
                 num_order=num_orders()
+                print(f"-------NUMERO DE ORDEN {num_order}")
                 address=addresess()
                 tax =taxes()
                 prlist=productsList()
                 date_orderd =date_order()
                 pdf_link=pdfs_links()
                 traking_id=traking_ids()
+                date_send=shipment_Date(date_orderd.year)
                 
                 w.get(pdf_link)
                 w.execute_script('window.print();')
                 awb=""
                 whe=""
-                date_send=""
                 date_refund=""
                 scraped=True
                 for pl in prlist:
