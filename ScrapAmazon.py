@@ -61,22 +61,42 @@ def date_order():
     date_orderd =w.find_element(By.XPATH,'//*[@id="orderDetails"]//span[@class="order-date-invoice-item"][1]').text
     date_orderd=datetime.strptime(date_orderd, 'Pedido el %d de %B de %Y').date()
     return date_orderd
-def addresess():
+def get_courier(adressName):
     try:
-        address=w.find_element(By.XPATH,"//li[@class='displayAddressLI displayAddressAddressLine1']").text
-        if len(re.findall(r"8414 Nw 66th St",address,flags=re.I))>0:
-            address="EF"
-        elif len(re.findall(r"7806 NW 46TH ST",address,flags=re.I))>0:
-            address="Alexim"
-        elif len(re.findall(r"2868 NW 72ND AVE",address,flags=re.I))>0:
-            address="JMC"
-        elif len(re.findall(r"1350 NW 121ST AVE",address,flags=re.I))>0:
-            address="MSL"
+        if len(re.findall(r"8414 Nw 66th St",adressName,flags=re.I))>0:
+            courier="EF"
+        elif len(re.findall(r"7806 NW 46TH ST",courier,flags=re.I))>0:
+            courier="Alexim"
+        elif len(re.findall(r"2868 NW 72ND AVE",courier,flags=re.I))>0:
+            courier="JMC"
+        elif len(re.findall(r"1350 NW 121ST AVE",courier,flags=re.I))>0:
+            courier="MSL"
         else:
-            address="otros"
+            courier="otros"
     except:
-        address="Sin courier"
-    return address
+        courier="Sin courier"
+    return courier
+def list_adress():
+    try:
+        dirs=w.find_elements(By.CSS_SELECTOR,"ul[class='displayAddressUL'] li")
+    except:
+        dirs=[]
+    if len(dirs)>0:
+        dictAdress={
+            "Shipping_Address_Name":dirs[0].text,
+            "shipping_Address_Street1":dirs[1].text,
+            "shipping_Address_City":dirs[2].text.split(",")[0],
+            "shipping_Address_State":dirs[2].text.split(",")[1].strip().split(" ")[0],
+            "shipping_Address_Zip":dirs[2].text.split(",")[1].strip().split(" ")[1]
+        }
+    else:
+        dictAdress={
+            "shipping_Address_Street1":"-",
+            "shipping_Address_City":"-",
+            "shipping_Address_State":"-",
+            "shipping_Address_Zip":"-"
+        }
+    return dictAdress
 def targets_digits():
     try:
         target_digits=w.find_element(By.XPATH,"//span[contains(text(),'****')]").text
@@ -86,8 +106,13 @@ def targets_digits():
     return target_digits
 
 def productsList():
-    productsList=[x.text for x in w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a")]
-    return productsList
+    try:
+        productsList=[x.text for x in w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a")]
+        productsLinks=[x.get_attribute("href") for x in w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a")]
+        productsId=[re.findall(r"/product/(.*)/ref",link)[0] for link in productsLinks]            
+    except:
+        productsList=[]
+    return productsList,productsId
 def scrap_order_details(cuenta,dates):
     dateFrom=datetime.strptime(dates.split("-")[0],"%d/%m/%Y").date()
     dateTo=datetime.strptime(dates.split("-")[1],"%d/%m/%Y").date()
@@ -111,21 +136,11 @@ def scrap_order_details(cuenta,dates):
     while len(w.find_elements(By.XPATH,"//li[@class='a-disabled a-last']"))==0:
         print(f"En la pagina {z}")
         z+=1
-        # if len(pages)>0:
-        #     n=len(pages)
-        # else:
-        #     n=1
-        #         #page=w.find_elements(By.XPATH,"//li[@class='a-normal' or @class='a-selected' ]/a")[i].get_attribute("href")
-        # for i in range(n):
-        #     if n!=1:
-        #         w.get(pages[i])
-        #     print(f"En la pagina {i+1}")
         espera=wait.until(EC.visibility_of_element_located((By.XPATH,"//a[contains(text(),'Ver detalles del pedido')]|//a[contains(text(),'View order details')]")))
         orders_elements=w.find_elements(By.XPATH,"//a[contains(text(),'Ver detalles del pedido')]|//a[contains(text(),'View order details')]")
         orders=[order.get_attribute("href") for order in orders_elements]
         fechas_elements=w.find_elements(By.XPATH,"//div[contains(., 'Pedido realizado')]/following-sibling::div/span")
         fechas=[fecha.text for fecha in fechas_elements if len(fecha.text)>0]
-        #pedidos=w.find_elements(By.XPATH,"//div[@class='a-text-right a-fixed-right-grid-col a-col-right']/div[@class='a-row']/a[1]")
         for j in range(len(fechas)):
             scraped=False
             try: 
@@ -140,9 +155,15 @@ def scrap_order_details(cuenta,dates):
                 target_digits=targets_digits()
                 num_order=num_orders()
                 print(f"-------NUMERO DE ORDEN {num_order}")
-                address=addresess()
+                listAddress=list_adress()
+                address_name=listAddress["Shipping_Address_Name"]
+                courier=get_courier(address_name)
+                address_street1=listAddress["shipping_Address_Street1"]
+                address_city=listAddress["shipping_Address_City"]
+                address_state=listAddress["shipping_Address_State"]
+                address_zip=listAddress["shipping_Address_Zip"]
                 tax =taxes()
-                prlist=productsList()
+                prlist,prsId=productsList()
                 date_orderd =date_order()
                 pdf_link=pdfs_links()
                 traking_id=traking_ids()
@@ -154,8 +175,29 @@ def scrap_order_details(cuenta,dates):
                 whe=""
                 date_refund=""
                 scraped=True
-                for pl in prlist:
-                    orders_details.append([date_orderd,num_order,pdf_link,awb,traking_id,tax,whe,target_digits,date_send,date_refund,cuenta,address,pl])
+                for i,pl in enumerate(prlist):
+                    dictrow={
+                        "date_orderd":date_orderd,
+                        "num_order":num_order,
+                        "pdf_link":pdf_link,
+                        "awb":awb,
+                        "traking_id":traking_id,
+                        "tax":tax,
+                        "whe":whe,
+                        "target_digits":target_digits,
+                        "date_send":date_send,
+                        "date_refund":date_refund,
+                        "cuenta":cuenta,
+                        "courier":courier,
+                        "Descripcion de Producto":pl,
+                        "Product Id":prsId[i],
+                        "address_name":address_name,
+                        "address_street1":address_street1,
+                        "address_city":address_city,
+                        "address_state":address_state,
+                        "address_zip":address_zip
+                    }
+                    orders_details.append(dictrow)
             else:
                 if dateFrom>date_orederd:
                     fin=True
@@ -194,7 +236,7 @@ for cuenta in cuentas:
         #print(e)
         print(f"ERROR NO DEFINIDO EN CUENTA: {cuenta}")
 w.close()
-df=pd.DataFrame(orders_total_details,columns=["Fecha de compra","Factura de amazon","link de factura","awb","Traking","Monto de Taxes","whe","Terminacion de tarjeta","Fecha de envio","Fecha de devolucion","Cuenta","Courier","Descripcion del producto"])
+df=pd.DataFrame(orders_total_details)
 df.to_csv("order_details.csv",index=False,sep=",")
 
 
