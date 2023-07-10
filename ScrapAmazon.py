@@ -41,18 +41,36 @@ def shipment_Date(year):
         wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR,"a[data-ref='ppx_pt2_dt_b_pt_detail']")))
         w.find_element(By.CSS_SELECTOR,"a[data-ref='ppx_pt2_dt_b_pt_detail']").click()
         wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR,"span[class='tracking-event-date']")))
-        shipmentDate=w.find_element(By.CSS_SELECTOR,"span[class='tracking-event-date']").text
+        shipmentDate=w.find_element(By.CSS_SELECTOR,"span[class='tracking-event-date']").text.replace(", ",",")
         shipmentDate=f"{shipmentDate} de {year}"
         shipmentDate=datetime.strptime(shipmentDate, '%A,%d de %B de %Y').date() 
     except Exception as e:
         print(e)
         shipmentDate="-"
+    try:
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR,"div[class='pt-status-milestone'] div[class='pt-status-milestone-label active current-label']")))
+        status=w.find_element(By.CSS_SELECTOR,"div[class='pt-status-milestone'] div[class='pt-status-milestone-label active current-label']").text
+    except:
+        status="Sin status"
 
-    return shipmentDate
+    return shipmentDate,status
 def billings():
-    tax =w.find_element(By.XPATH,'//div[contains(., "Impuestos")]/following-sibling::div/span').text
-    tax=re.findall(r"\d+\.\d+",tax)[0]
-    return tax
+    billsRows=w.find_elements(By.XPATH,"//h5[contains(text(),'Resumen del pedido')]/parent::div/div[@class='a-row']")
+    billObj={}
+    for row in billsRows:
+        concept=row.find_element(By.XPATH,"./div[1]").text
+        value=row.find_element(By.XPATH,"./div[2]").text
+        billObj[concept]=value
+    keysDiscount=list(billObj.keys())
+    if "Buy any 4, Save 5%:" in keysDiscount :
+        cuopon=billObj["Buy any 4, Save 5%:"]
+    elif "Deal of the Day:" in keysDiscount:
+        cuopon=billObj["Deal of the Day:"]
+    elif "Your Coupon Savings:" in keysDiscount:
+        cuopon=billObj["Your Coupon Savings:"]
+    else:
+        cuopon="0"
+    return billObj,cuopon
 def num_orders():
     num_order=w.find_element(By.XPATH,'//*[@id="orderDetails"]//span[@class="order-date-invoice-item"][2]').text
     num_order=re.findall(r"\d{3}-\d{7}-\d{7}",num_order)[0]
@@ -118,6 +136,13 @@ def get_status():
     except:
         status="Sin status"
     return status
+def shiptment_status():
+    try:
+        wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR,"div[class='pt-status-milestone'] div[class='pt-status-milestone-label active current-label']")))
+        status=w.find_element(By.CSS_SELECTOR,"div[class='pt-status-milestone'] div[class='pt-status-milestone-label active current-label']").text
+    except:
+        status="Sin status"
+    return status
 def productsList():
     listProducts=w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid")
     productInfo=[]
@@ -127,6 +152,7 @@ def productsList():
         try:
             sellBy=product.find_element(By.XPATH,"//span[contains(text(),'Vendido por:')]").text
             sellBy=re.findall(r"Vendido por: (.*)",sellBy)[0]
+            sellBy=sellBy.replace("¿Dudas sobre el producto? Pregunta al vendedor","")
         except:
             sellBy="Sin seller"
         try:
@@ -195,13 +221,12 @@ def scrap_order_details(cuenta,dates):
                 address_city=listAddress["shipping_Address_City"]
                 address_state=listAddress["shipping_Address_State"]
                 address_zip=listAddress["shipping_Address_Zip"]
-                billinInfo =billings()
+                billinInfo,cuopon =billings()
                 listProducts=productsList()
                 date_orderd =date_order()
                 pdf_link=pdfs_links()
                 traking_id=traking_ids()
-                date_send=shipment_Date(date_orderd.year)
-                
+                date_send,sendStatus=shipment_Date(date_orderd.year)
                 w.get(pdf_link)
                 w.execute_script('window.print();')
                 awb=""
@@ -222,6 +247,7 @@ def scrap_order_details(cuenta,dates):
                         "Seller":p["sellBy"],
                         "Seller Credentials":"",
                         "Quantity":1,
+                        "Purchase Price Per Unit":p["price"],
                         "Payment Instrument Type":target_digits,
                         "Purchase Order Number":"",
                         "PO Line Number":"",
@@ -232,22 +258,15 @@ def scrap_order_details(cuenta,dates):
                         "address_city":address_city,
                         "address_state":address_state,
                         "address_zip":address_zip,
-                        "Order Status":"",
+                        "Order Status":sendStatus,
                         "Courier":courier,
                         "traking_id":traking_id,
-                        "item Subtotal":"",
-                        "Taxes":tax,
-                        "Shipping cost $":"",
-                        "Cupon $":"",
-                        "Grand Total $":"",
+                        "item Subtotal":billinInfo["Productos:"],
+                        "Taxes":billinInfo["Impuestos:"],
+                        "Shipping cost $":billinInfo["Envío:"],
+                        "Cupon $":cuopon,
+                        "Grand Total $":billinInfo["Total (I.V.A. Incluido):"],
                         
-                        "pdf_link":pdf_link,
-                        "awb":awb,
-                        "whe":whe,
-                        "date_send":date_send,
-                        "date_refund":date_refund,
-                        "cuenta":cuenta,
-                        "courier":courier,
                     }
                     orders_details.append(dictrow)
             else:

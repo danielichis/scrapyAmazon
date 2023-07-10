@@ -1,3 +1,4 @@
 chromedriver.exe
-
 playwright/.auth
+#exlude parametros.txt
+parametros.txt

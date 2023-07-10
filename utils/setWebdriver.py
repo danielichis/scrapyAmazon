@@ -49,7 +49,7 @@ def configWebDriver():
     option.binary_location=exepath
     option.add_experimental_option('prefs', prefs)
     option.add_argument(f"user-data-dir={pdfs_path}")
-    #w= webdriver.Chrome(ChromeDriverManager().install(), options=option)
-    w = webdriver.Chrome(executable_path=w, options=option)
+    w= webdriver.Chrome(ChromeDriverManager().install(), options=option)
+    #w = webdriver.Chrome(executable_path=w, options=option)
     return w
 
