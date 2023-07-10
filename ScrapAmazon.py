@@ -49,7 +49,7 @@ def shipment_Date(year):
         shipmentDate="-"
 
     return shipmentDate
-def taxes():
+def billings():
     tax =w.find_element(By.XPATH,'//div[contains(., "Impuestos")]/following-sibling::div/span').text
     tax=re.findall(r"\d+\.\d+",tax)[0]
     return tax
@@ -57,6 +57,7 @@ def num_orders():
     num_order=w.find_element(By.XPATH,'//*[@id="orderDetails"]//span[@class="order-date-invoice-item"][2]').text
     num_order=re.findall(r"\d{3}-\d{7}-\d{7}",num_order)[0]
     return num_order
+
 def date_order():
     date_orderd =w.find_element(By.XPATH,'//*[@id="orderDetails"]//span[@class="order-date-invoice-item"][1]').text
     date_orderd=datetime.strptime(date_orderd, 'Pedido el %d de %B de %Y').date()
@@ -65,11 +66,11 @@ def get_courier(adressName):
     try:
         if len(re.findall(r"8414 Nw 66th St",adressName,flags=re.I))>0:
             courier="EF"
-        elif len(re.findall(r"7806 NW 46TH ST",courier,flags=re.I))>0:
+        elif len(re.findall(r"7806 NW 46TH ST",adressName,flags=re.I))>0:
             courier="Alexim"
-        elif len(re.findall(r"2868 NW 72ND AVE",courier,flags=re.I))>0:
+        elif len(re.findall(r"2868 NW 72ND AVE",adressName,flags=re.I))>0:
             courier="JMC"
-        elif len(re.findall(r"1350 NW 121ST AVE",courier,flags=re.I))>0:
+        elif len(re.findall(r"1350 NW 121ST AVE",adressName,flags=re.I))>0:
             courier="MSL"
         else:
             courier="otros"
@@ -104,15 +105,47 @@ def targets_digits():
     except:
         target_digits="sin tarjeta"
     return target_digits
-
-def productsList():
+def get_seller():
     try:
-        productsList=[x.text for x in w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a")]
-        productsLinks=[x.get_attribute("href") for x in w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a")]
-        productsId=[re.findall(r"/product/(.*)/ref",link)[0] for link in productsLinks]            
+        sellBy=w.find_element(By.CSS_SELECTOR,"div[class='a-row'] span[class='a-size-small a-color-secondary']").text
+        sellBy=re.findall(r"Vendido por: (.*)",sellBy)[0]
     except:
-        productsList=[]
-    return productsList,productsId
+        sellBy="Sin seller"
+    return sellBy
+def get_status():
+    try:
+        status=w.find_element(By.XPATH,"//span[@class='a-color-secondary a-text-bold']/following-sibling::span").text
+    except:
+        status="Sin status"
+    return status
+def productsList():
+    listProducts=w.find_elements(By.CSS_SELECTOR,"div.a-fixed-left-grid")
+    productInfo=[]
+    for product in listProducts:
+        price=product.find_element(By.CSS_SELECTOR,"span[class='a-size-small a-color-price']").text
+        condition=product.find_element(By.CSS_SELECTOR,"span[class='a-color-secondary']").text
+        try:
+            sellBy=product.find_element(By.XPATH,"//span[contains(text(),'Vendido por:')]").text
+            sellBy=re.findall(r"Vendido por: (.*)",sellBy)[0]
+        except:
+            sellBy="Sin seller"
+        try:
+            quantity=product.find_element(By.CSS_SELECTOR,"span[class='item-view-qty']").text
+        except:
+            quantity=1
+        name=product.find_element(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a").text
+        link=product.find_element(By.CSS_SELECTOR,"div.a-fixed-left-grid div.a-row:first-child a").get_attribute("href")
+        id=re.findall(r"/product/(.*)/ref",link)[0]
+        productoObjeto={
+            "name":name,
+            "id":id,
+            "price":price,
+            "quantity":quantity,
+            "condition":condition,
+            "sellBy":sellBy
+        }
+        productInfo.append(productoObjeto)
+    return productInfo
 def scrap_order_details(cuenta,dates):
     dateFrom=datetime.strptime(dates.split("-")[0],"%d/%m/%Y").date()
     dateTo=datetime.strptime(dates.split("-")[1],"%d/%m/%Y").date()
@@ -157,13 +190,13 @@ def scrap_order_details(cuenta,dates):
                 print(f"-------NUMERO DE ORDEN {num_order}")
                 listAddress=list_adress()
                 address_name=listAddress["Shipping_Address_Name"]
-                courier=get_courier(address_name)
                 address_street1=listAddress["shipping_Address_Street1"]
+                courier=get_courier(address_street1)
                 address_city=listAddress["shipping_Address_City"]
                 address_state=listAddress["shipping_Address_State"]
                 address_zip=listAddress["shipping_Address_Zip"]
-                tax =taxes()
-                prlist,prsId=productsList()
+                billinInfo =billings()
+                listProducts=productsList()
                 date_orderd =date_order()
                 pdf_link=pdfs_links()
                 traking_id=traking_ids()
@@ -175,27 +208,46 @@ def scrap_order_details(cuenta,dates):
                 whe=""
                 date_refund=""
                 scraped=True
-                for i,pl in enumerate(prlist):
+                for p in listProducts:
                     dictrow={
-                        "date_orderd":date_orderd,
-                        "num_order":num_order,
-                        "pdf_link":pdf_link,
-                        "awb":awb,
-                        "traking_id":traking_id,
-                        "tax":tax,
-                        "whe":whe,
-                        "target_digits":target_digits,
-                        "date_send":date_send,
-                        "date_refund":date_refund,
-                        "cuenta":cuenta,
-                        "courier":courier,
-                        "Descripcion de Producto":pl,
-                        "Product Id":prsId[i],
+                        "Order Date":date_orderd,
+                        "Order ID":num_order,
+                        "Tittle":p["name"],
+                        "Category":"",
+                        "ASIN/ISBN":p["id"],
+                        "UNSPSC Code":"",
+                        "Website":"Amazon.com",
+                        "Release Date":"",
+                        "Condition":p["condition"],
+                        "Seller":p["sellBy"],
+                        "Seller Credentials":"",
+                        "Quantity":1,
+                        "Payment Instrument Type":target_digits,
+                        "Purchase Order Number":"",
+                        "PO Line Number":"",
+                        "Ordering Customer Email":cuenta,
+                        "Shipment Date":date_send,
                         "address_name":address_name,
                         "address_street1":address_street1,
                         "address_city":address_city,
                         "address_state":address_state,
-                        "address_zip":address_zip
+                        "address_zip":address_zip,
+                        "Order Status":"",
+                        "Courier":courier,
+                        "traking_id":traking_id,
+                        "item Subtotal":"",
+                        "Taxes":tax,
+                        "Shipping cost $":"",
+                        "Cupon $":"",
+                        "Grand Total $":"",
+                        
+                        "pdf_link":pdf_link,
+                        "awb":awb,
+                        "whe":whe,
+                        "date_send":date_send,
+                        "date_refund":date_refund,
+                        "cuenta":cuenta,
+                        "courier":courier,
                     }
                     orders_details.append(dictrow)
             else:
